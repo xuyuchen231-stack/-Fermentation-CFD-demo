@@ -1,0 +1,51 @@
+name: Publish public CFD Studio demo
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: public-cfd-studio-pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout public demo repository
+        uses: actions/checkout@v4
+      - name: Check browser JavaScript and expected assets
+        run: |
+          for f in index.html style.css studio.js cfd-field.js demo-field.js reactor-config.js reactor-ui.js case-compare.js comparison-ui.js scientific-figures.js scientific-figures-ui.js; do
+            test -s "$f"
+          done
+          for f in *.js; do node --check "$f"; done
+          python3 - <<'PY'
+          import pathlib,re
+          html=pathlib.Path("index.html").read_text()
+          references=re.findall(r'(?:src|href)="([^"]+)"', html)
+          for r in references:
+              if r.endswith((".js",".css")):
+                  assert pathlib.Path(r).is_file(), "Missing browser asset: "+r
+          PY
+      - name: Package only public browser files
+        run: |
+          mkdir -p _site
+          cp index.html style.css studio.js cfd-field.js demo-field.js reactor-config.js reactor-ui.js case-compare.js comparison-ui.js scientific-figures.js scientific-figures-ui.js _site/
+          touch _site/.nojekyll
+      - name: Enable and configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Upload website
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
